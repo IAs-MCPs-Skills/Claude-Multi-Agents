@@ -68,6 +68,37 @@ Run `switch-profile.ps1` (or the terminal function) to update all three at once,
 
 ---
 
+## Git Bash abre com erro `\357\273\277': command not found`
+
+**Causa:** O PowerShell gravou o `~/.bashrc` com BOM (Byte Order Mark) UTF-8. O Git Bash não reconhece o BOM e tenta executá-lo como comando.
+
+**Correcao (uma vez):**
+```bash
+sed -i '1s/^\xEF\xBB\xBF//' ~/.bashrc
+source ~/.bashrc
+```
+
+**Versoes do instalador afetadas:** anteriores ao fix de 2026-04-13 (usavam `Set-Content -Encoding UTF8`).
+Versoes corrigidas usam `[System.IO.File]::WriteAllText` com `UTF8Encoding($false)` (sem BOM).
+
+---
+
+## `Set-ExecutionPolicy` gera erro "configuração substituída por escopo mais específico"
+
+**Mensagem completa:**
+```
+Set-ExecutionPolicy : O Windows PowerShell atualizou sua política de execução com êxito,
+mas a configuração foi substituída por uma política definida em um escopo mais específico.
+```
+
+**Causa:** O escopo `Process` já tem `Bypass` (mais permissivo), o que sobrescreve o `CurrentUser`. O script tentava setar `RemoteSigned` no `CurrentUser` e o PowerShell emitia um aviso — que com `$ErrorActionPreference = 'Stop'` virava erro terminante.
+
+**Impacto:** Nenhum — a política efetiva era `Bypass`, que já permite executar scripts.
+
+**Versoes corrigidas:** o instalador agora verifica a política **efetiva** (`Get-ExecutionPolicy` sem `-Scope`) e pula o `Set-ExecutionPolicy` se já for suficiente (`Bypass`, `Unrestricted` ou `RemoteSigned`).
+
+---
+
 ## "Execution of scripts is disabled on this system"
 
 **Fix:**
