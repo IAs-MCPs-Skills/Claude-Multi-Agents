@@ -1,0 +1,25 @@
+{
+    "mcpServers": {
+        // Add your MCP servers here.
+        //
+        // Example — local server via stdio:
+        //
+        // "my-mcp": {
+        //     "type": "stdio",
+        //     "command": "node",
+        //     "args": ["C:\\Users\\YOU\\path\\to\\server.js"]
+        // },
+        //
+        // Example — remote server via HTTP:
+        //
+        // "my-http-mcp": {
+        //     "type": "http",
+        //     "url": "https://my-mcp.example.com/jsonrpc",
+        //     "headers": {
+        //         "Authorization": "Bearer ${MY_TOKEN}"
+        //     }
+        // }
+        //
+        // NOTE: use "mcpServers" (not "servers") — Claude Code silently ignores "servers".
+    }
+}
