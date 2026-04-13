@@ -1,25 +1,20 @@
 {
-    "mcpServers": {
-        // Add your MCP servers here.
-        //
-        // Example — local server via stdio:
-        //
-        // "my-mcp": {
-        //     "type": "stdio",
-        //     "command": "node",
-        //     "args": ["C:\\Users\\YOU\\path\\to\\server.js"]
-        // },
-        //
-        // Example — remote server via HTTP:
-        //
-        // "my-http-mcp": {
-        //     "type": "http",
-        //     "url": "https://my-mcp.example.com/jsonrpc",
-        //     "headers": {
-        //         "Authorization": "Bearer ${MY_TOKEN}"
-        //     }
-        // }
-        //
-        // NOTE: use "mcpServers" (not "servers") — Claude Code silently ignores "servers".
-    }
+    // Claude Code profile settings.
+    //
+    // IMPORTANTE: NAO adicione "mcpServers" aqui.
+    // Claude Code ignora silenciosamente essa chave no settings.json.
+    //
+    // MCPs sao configurados via CLI e armazenados em .claude.json:
+    //
+    //   claude mcp add <nome> --scope user -- <comando> [args...]
+    //   claude mcp add <nome> --scope user --transport http <url>
+    //
+    // Exemplos:
+    //   claude mcp add minha-tool  --scope user -- node "C:\caminho\server.js"
+    //   claude mcp add minha-api   --scope user --transport http https://api.exemplo.com/mcp
+    //   claude mcp add com-token   --scope user --transport http https://api.exemplo.com/mcp --header "Authorization: Bearer SEU_TOKEN"
+    //
+    // Verifique com: claude mcp list
+    //
+    // Outras configuracoes validas aqui: permissions, effortLevel, etc.
 }

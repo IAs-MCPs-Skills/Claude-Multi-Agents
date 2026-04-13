@@ -1,5 +1,34 @@
 # Troubleshooting
 
+## MCPs nao aparecem (`/mcp` diz "No MCP servers configured")
+
+**Causa:** MCPs foram adicionados em `settings.json` (chave `mcpServers`), mas Claude Code **ignora** essa chave. MCPs devem estar em `.claude.json`, gerenciado exclusivamente pelo `claude mcp add`.
+
+**Diagnostico:**
+```powershell
+claude mcp list   # se vazio, os MCPs nao estao no lugar certo
+```
+
+**Correcao:**
+```powershell
+# 1. Ative o perfil com problema
+claude-<nome-do-perfil>
+
+# 2. Adicione os MCPs corretamente
+claude mcp add <nome> --scope user -- <comando> [args...]
+# ou para HTTP:
+claude mcp add <nome> --scope user --transport http <url>
+
+# 3. Verifique
+claude mcp list
+```
+
+**O que NAO funciona:**
+Editar `~/.claude-<perfil>/settings.json` e adicionar `"mcpServers": { ... }`.
+Claude Code le essa chave, aceita sem erro, mas nao carrega os servidores.
+
+---
+
 ## Claude is still showing the old account after switching
 
 **Cause:** The extension process hasn't reloaded.

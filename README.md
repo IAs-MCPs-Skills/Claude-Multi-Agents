@@ -10,7 +10,7 @@ Claude Code has no native multi-account support. Every account needs its own con
 
 **What you get after running `install.ps1`:**
 
-- Per-profile isolation: each account has its own credentials, `settings.json` (MCPs), and `CLAUDE.md` (context)
+- Per-profile isolation: each account has its own credentials, MCP servers, and `CLAUDE.md` (context)
 - Skills, agents, and commands are **shared across all profiles** via junction points — update once, everywhere updates
 - Terminal aliases: `claude-work`, `claude-personal` open Claude with the right account instantly
 - Slash commands: `/profile-work` switches from inside Claude Code
@@ -73,19 +73,28 @@ claude-perfil        # show which profile is currently active
 
 ## Customizing a profile
 
-**MCPs (tools):** edit `~/.claude-<name>/settings.json`
+**MCPs (tools):** use `claude mcp add --scope user` com o perfil ativo
 
-```json
-{
-    "mcpServers": {
-        "my-tool": {
-            "type": "stdio",
-            "command": "node",
-            "args": ["C:\\path\\to\\server.js"]
-        }
-    }
-}
+```powershell
+# Ative o perfil primeiro
+claude-<name>
+
+# Adicione um servidor stdio (processo local)
+claude mcp add my-tool --scope user -- node "C:\path\to\server.js"
+
+# Adicione um servidor HTTP (remoto)
+claude mcp add my-api --scope user --transport http https://api.example.com/mcp
+
+# Com autenticacao Bearer
+claude mcp add my-api --scope user --transport http https://api.example.com/mcp --header "Authorization: Bearer TOKEN"
+
+# Verifique
+claude mcp list
 ```
+
+> **Por que nao editar `settings.json` diretamente?**
+> Claude Code armazena MCPs no `.claude.json` (gerenciado pelo `claude mcp add`).
+> A chave `mcpServers` em `settings.json` e ignorada silenciosamente.
 
 **Context:** edit `~/.claude-<name>/CLAUDE.md` — describe the account's role, active projects, conventions.
 
@@ -113,7 +122,8 @@ Repeat for every profile. Your primary `~/.claude` is already authenticated.
 ```
 ~/.claude/              ← primary profile (already exists)
   .credentials.json     ← auth token
-  settings.json         ← MCPs
+  .claude.json          ← MCPs (gerenciado por `claude mcp add`)
+  settings.json         ← permissoes, effort level, etc.
   CLAUDE.md             ← global context
   skills/               ← shared across all profiles
   agents/               ← shared across all profiles
@@ -124,7 +134,8 @@ Repeat for every profile. Your primary `~/.claude` is already authenticated.
 
 ~/.claude-work/         ← additional profile
   .credentials.json     ← separate auth token
-  settings.json         ← separate MCP config
+  .claude.json          ← MCPs deste perfil (gerenciado por `claude mcp add`)
+  settings.json         ← permissoes, effort level, etc.
   CLAUDE.md             ← separate context
   skills/  → junction → ~/.claude/skills/
   agents/  → junction → ~/.claude/agents/

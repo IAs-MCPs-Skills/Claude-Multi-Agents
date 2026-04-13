@@ -14,13 +14,18 @@ Each directory is a fully independent profile:
 | File | Purpose |
 |---|---|
 | `.credentials.json` | OAuth token — who is logged in |
-| `settings.json` | MCP servers active for this account |
+| `.claude.json` | MCP servers active for this account (managed by `claude mcp add`) |
+| `settings.json` | Permissions, effort level, and other Claude Code settings |
 | `CLAUDE.md` | Global context instructions |
 | `skills/` | Available skills |
 | `agents/` | Custom agents |
 | `commands/` | Slash commands |
 | `projects/` | Conversation history per project |
 | `memory/` | Persistent memory |
+
+> **Importante:** MCPs vivem em `.claude.json`, nao em `settings.json`.
+> Claude Code ignora silenciosamente a chave `mcpServers` no `settings.json`.
+> Sempre use `claude mcp add --scope user` para adicionar MCPs a um perfil.
 
 By pointing `CLAUDE_CONFIG_DIR` to a different directory, Claude Code boots with a completely different identity — different account, different MCPs, different context.
 
@@ -124,4 +129,13 @@ cmd /c "mklink /J `"$env:USERPROFILE\.claude-newprofile\commands`" `"$env:USERPR
 # 6. Authenticate
 claude-newprofile
 # Inside Claude: /login
+
+# 7. Add MCPs (with the profile active via CLAUDE_CONFIG_DIR)
+$env:CLAUDE_CONFIG_DIR = "$env:USERPROFILE\.claude-newprofile"
+claude mcp add my-tool --scope user -- node "C:\path\to\server.js"
+claude mcp add my-api  --scope user --transport http https://api.example.com/mcp
+claude mcp list   # verify
 ```
+
+> MCPs sao gravados em `.claude.json` via `claude mcp add --scope user`.
+> **Nao** edite `settings.json` para MCPs — Claude Code ignora essa chave la.

@@ -218,7 +218,7 @@ foreach ($name in $Profiles) {
         if (Test-Path $src) {
             Copy-Item $src $settingsTarget -Force
         } else {
-            '{ "mcpServers": {} }' | Set-Content -Path $settingsTarget -Encoding UTF8
+            '{}' | Set-Content -Path $settingsTarget -Encoding UTF8
         }
         Write-Ok "  settings.json criado"
     } else {
@@ -256,6 +256,78 @@ foreach ($name in $Profiles) {
             }
         }
     }
+}
+
+# --- Configure MCPs per profile (optional) ------------------------------------
+#
+# MCPs sao armazenados em .claude.json (nao em settings.json).
+# O unico modo correto de adiciona-los e via `claude mcp add --scope user`.
+# Ao definir CLAUDE_CONFIG_DIR antes do comando, ele grava no perfil certo.
+
+Write-Host ""
+Write-Step "Configuracao de MCPs por perfil (opcional)..."
+Write-Host "  MCPs sao configurados via 'claude mcp add --scope user'." -ForegroundColor DarkGray
+Write-Host "  O instalador pode configurar isso agora, ou voce pode fazer depois." -ForegroundColor DarkGray
+Write-Host ""
+
+foreach ($name in $Profiles) {
+    $dir = $ProfileMap[$name]
+
+    $doMcps = Ask-YesNo "Adicionar MCPs ao perfil '$name' agora?"
+    if (-not $doMcps) {
+        Write-Warn "  Pulando MCPs para '$name'. Para adicionar depois:"
+        Write-Host "    1. Ative o perfil: claude-$name" -ForegroundColor DarkGray
+        Write-Host "    2. Execute: claude mcp add <nome> --scope user [opcoes]" -ForegroundColor DarkGray
+        Write-Host "    3. Verifique: claude mcp list" -ForegroundColor DarkGray
+        continue
+    }
+
+    # Define CLAUDE_CONFIG_DIR para gravar no perfil correto
+    $savedDir = $env:CLAUDE_CONFIG_DIR
+    $env:CLAUDE_CONFIG_DIR = $dir
+
+    while ($true) {
+        Write-Host ""
+        $mcpName = (Read-Host "  Nome do MCP (Enter para terminar)").Trim()
+        if ([string]::IsNullOrWhiteSpace($mcpName)) { break }
+
+        $typeChoice = ''
+        while ($typeChoice -notin @('1', '2')) {
+            $typeChoice = (Read-Host "  Tipo: [1] stdio (processo local)  [2] http (servidor remoto)").Trim()
+        }
+
+        if ($typeChoice -eq '2') {
+            $mcpUrl  = (Read-Host "  URL do servidor").Trim()
+            $hasAuth = Ask-YesNo "  Requer Bearer token?"
+            if ($hasAuth) {
+                $token  = (Read-Host "  Token").Trim()
+                $result = & claude mcp add $mcpName --scope user --transport http $mcpUrl --header "Authorization: Bearer $token" 2>&1
+            } else {
+                $result = & claude mcp add $mcpName --scope user --transport http $mcpUrl 2>&1
+            }
+        } else {
+            $mcpCmd  = (Read-Host "  Comando (ex: node, npx)").Trim()
+            $rawArgs = (Read-Host "  Argumentos separados por virgula (ex: C:\path\server.js, arg2)").Trim()
+            $mcpArgs = if ($rawArgs) {
+                @($rawArgs -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+            } else { @() }
+
+            if ($mcpArgs.Count -gt 0) {
+                $result = & claude mcp add $mcpName --scope user -- $mcpCmd @mcpArgs 2>&1
+            } else {
+                $result = & claude mcp add $mcpName --scope user -- $mcpCmd 2>&1
+            }
+        }
+
+        if ($LASTEXITCODE -eq 0) {
+            Write-Ok "  MCP '$mcpName' adicionado."
+        } else {
+            Write-Warn "  Falha ao adicionar '$mcpName': $result"
+        }
+    }
+
+    $env:CLAUDE_CONFIG_DIR = $savedDir
+    Write-Ok "  MCPs do perfil '$name' configurados. Verifique com: claude mcp list"
 }
 
 # --- Install switch-profile.ps1 -----------------------------------------------
@@ -433,6 +505,12 @@ Write-Host "  Para cada perfil novo, faca o primeiro login:" -ForegroundColor Wh
 foreach ($name in $Profiles) {
     Write-Host "    claude-$name   ->   dentro do Claude: /login" -ForegroundColor DarkGray
 }
+Write-Host ""
+Write-Host "  Para adicionar/verificar MCPs de um perfil:" -ForegroundColor White
+Write-Host "    claude mcp add <nome> --scope user -- <comando> [args]" -ForegroundColor DarkGray
+Write-Host "    claude mcp add <nome> --scope user --transport http <url>" -ForegroundColor DarkGray
+Write-Host "    claude mcp list" -ForegroundColor DarkGray
+Write-Host "  (Ative o perfil antes: claude-<nome>)" -ForegroundColor DarkGray
 Write-Host ""
 if ($DoVSCode) {
     Write-Host "  Apos trocar perfil no VS Code:" -ForegroundColor White
