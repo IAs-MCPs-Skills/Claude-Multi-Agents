@@ -445,8 +445,9 @@ if ($DoBash) {
     $bashLines.Add($MarkerBashStart)
     $bashLines.Add('')
 
+    $UserProfileSlash = $env:USERPROFILE -replace '\\', '/'
     foreach ($name in $ProfileMap.Keys) {
-        $dir = ($ProfileMap[$name] -replace '\\', '/') -replace "^$([regex]::Escape($env:USERPROFILE -replace '\\', '/') )", '$HOME'
+        $dir = ($ProfileMap[$name] -replace '\\', '/') -replace "^$([regex]::Escape($UserProfileSlash))", '$HOME'
         $bashLines.Add("claude-$name() {")
         $bashLines.Add("    export CLAUDE_CONFIG_DIR=`"$dir`"")
         $bashLines.Add("    echo `"[claude] Perfil: $name`"")
@@ -467,7 +468,8 @@ if ($DoBash) {
 
     $newBash = $bashLines -join "`n"
     $finalBash = $bashExisting.TrimEnd() + "`n`n" + $newBash + "`n"
-    $finalBash | Set-Content -Path $BashRc -Encoding UTF8
+    # UTF-8 sem BOM — Git Bash nao aceita BOM e interpreta como comando
+    [System.IO.File]::WriteAllText($BashRc, $finalBash, [System.Text.UTF8Encoding]::new($false))
 
     Write-Ok "Funcoes adicionadas ao ~/.bashrc"
     Write-Warn "Execute: source ~/.bashrc (ou abra um novo terminal Git Bash)"
@@ -475,12 +477,26 @@ if ($DoBash) {
 
 # --- ExecutionPolicy ----------------------------------------------------------
 
-$policy = Get-ExecutionPolicy -Scope CurrentUser
-if ($policy -in @('Restricted', 'Undefined', 'AllSigned')) {
+$effectivePolicy = Get-ExecutionPolicy
+$permissive = @('Bypass', 'Unrestricted', 'RemoteSigned')
+
+if ($effectivePolicy -notin $permissive) {
     Write-Host ""
     Write-Step "Habilitando execucao de scripts PowerShell..."
-    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-    Write-Ok "ExecutionPolicy definido como RemoteSigned (escopo: usuario atual)"
+    try {
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction Stop
+        Write-Ok "ExecutionPolicy definido como RemoteSigned (escopo: usuario atual)"
+    } catch {
+        $newEffective = Get-ExecutionPolicy
+        if ($newEffective -in $permissive) {
+            Write-Ok "ExecutionPolicy efetiva: $newEffective (suficiente para executar scripts)"
+        } else {
+            Write-Warn "Nao foi possivel alterar ExecutionPolicy: $_"
+            Write-Warn "Execute manualmente: Set-ExecutionPolicy RemoteSigned -Scope CurrentUser"
+        }
+    }
+} else {
+    Write-Ok "ExecutionPolicy efetiva ja e '$effectivePolicy' -- nenhuma alteracao necessaria"
 }
 
 # --- Summary ------------------------------------------------------------------
