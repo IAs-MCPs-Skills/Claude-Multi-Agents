@@ -55,11 +55,14 @@ Junction points behave like real directories from the OS's perspective. Claude C
 When you run `claude-work` or `/profile-work`, the script:
 
 1. **Reads `~/.claude/profiles.json`** to find the target directory
-2. **Updates `$env:CLAUDE_CONFIG_DIR`** in the current process
-3. **Runs `setx CLAUDE_CONFIG_DIR`** so the value persists across terminal sessions
-4. **Updates VS Code `settings.json`** in two places:
+2. **Updates `$env:CLAUDE_CONFIG_DIR`** in the current process only
+3. **Updates VS Code `settings.json`** in two places:
    - `terminal.integrated.env.windows.CLAUDE_CONFIG_DIR` — new integrated terminals pick up the value
    - `claudeCode.environmentVariables` — injected into the extension process; a `Reload Window` is enough to switch without restarting VS Code
+4. **Launches `claude` automatically** (unless called with `-NoLaunch`, which slash commands use)
+
+> **Why not `setx`?**
+> `setx` writes `CLAUDE_CONFIG_DIR` to the Windows registry as a persistent user variable. This contaminates every terminal and VS Code window opened afterwards — even after you stop using that profile. Isolation is handled per-process (shell functions) and per-extension-reload (VS Code settings), never globally.
 
 ---
 

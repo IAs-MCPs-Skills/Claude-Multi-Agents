@@ -354,17 +354,18 @@ $CommandsDir = "$PrimaryDir\commands"
 foreach ($name in $ProfileMap.Keys) {
     $cmdFile = "$CommandsDir\profile-$name.md"
     $content = @"
-Troca para o perfil '$name' do Claude Code.
+Switch the active Claude Code profile to '$name'.
 
-Execute o comando abaixo e, no painel VS Code, pressione ``Ctrl+Shift+P`` -> ``Developer: Reload Window``:
+Run this PowerShell command immediately using the PowerShell tool — do not ask the user to run it manually:
 
 ``````powershell
-powershell -ExecutionPolicy Bypass -File "$switchDst" -Profile "$name"
+powershell -ExecutionPolicy Bypass -File "$switchDst" -Profile "$name" -NoLaunch
 ``````
 
-Apos a execucao:
-- **Terminal**: novos terminais integrados ja usam este perfil.
-- **Painel VS Code**: ``Ctrl+Shift+P`` -> ``Developer: Reload Window`` (nao precisa fechar o VS Code).
+After the command completes:
+- Report whether the switch succeeded or failed.
+- If running inside **VS Code panel**: tell the user to press ``Ctrl+Shift+P`` -> ``Developer: Reload Window`` to activate the new profile in the panel.
+- If running in a **terminal session**: tell the user to close this Claude session and run ``claude-$name`` in a new terminal to start Claude with the new profile.
 "@
     $content | Set-Content -Path $cmdFile -Encoding UTF8
 }

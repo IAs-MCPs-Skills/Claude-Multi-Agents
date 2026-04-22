@@ -10,14 +10,19 @@
     Name of the profile to switch to (must exist in profiles.json).
 .PARAMETER NoVSCode
     Skip updating VS Code settings.json.
+.PARAMETER NoLaunch
+    Skip auto-launching Claude after switching (used when called from inside Claude, e.g. via slash command).
 .EXAMPLE
     switch-profile.ps1 -Profile work
+.EXAMPLE
+    switch-profile.ps1 -Profile work -NoLaunch
 #>
 param(
     [Parameter(Mandatory = $true)]
     [string]$Profile,
 
-    [switch]$NoVSCode
+    [switch]$NoVSCode,
+    [switch]$NoLaunch
 )
 
 $ErrorActionPreference = 'Stop'
@@ -57,13 +62,15 @@ if (-not $target) {
 # Expand ~ if present
 $target = $target -replace '^~', $env:USERPROFILE
 
-# --- Set env var (current process) ------------------------------------------
+# --- Set env var (current process only) -------------------------------------
+# setx is intentionally NOT used: a persistent user env var would contaminate
+# all terminal sessions and VS Code windows opened after this switch, making it
+# impossible to run the primary profile without explicitly resetting the var.
+# Isolation is achieved via:
+#   - terminal: shell functions (claude-<name>) set CLAUDE_CONFIG_DIR per process
+#   - VS Code panel: claudeCode.environmentVariables in settings.json (updated below)
 
 $env:CLAUDE_CONFIG_DIR = $target
-
-# --- Set env var (persistent -- user scope) -----------------------------------
-
-& setx CLAUDE_CONFIG_DIR "$target" | Out-Null
 
 # --- Update VS Code settings.json --------------------------------------------
 
@@ -133,10 +140,19 @@ if (-not $NoVSCode -and (Test-Path "$env:APPDATA\Code\User\settings.json")) {
 # --- Warn if no credentials --------------------------------------------------
 
 $cred = Join-Path $target '.credentials.json'
-if (-not (Test-Path $cred)) {
+$needsLogin = -not (Test-Path $cred)
+if ($needsLogin) {
     Write-Host ""
     Write-Host "  [aviso] Perfil '$Profile' ainda nao tem credenciais." -ForegroundColor Magenta
-    Write-Host "  Apos o Reload Window, execute /login dentro do Claude para autenticar." -ForegroundColor Magenta
+    Write-Host "  Execute /login dentro do Claude para autenticar." -ForegroundColor Magenta
 }
 
 Write-Host ""
+
+# --- Auto-launch Claude (unless called from inside Claude via slash command) --
+
+if (-not $NoLaunch) {
+    Write-Host "  Iniciando Claude com o perfil '$Profile'..." -ForegroundColor Cyan
+    Write-Host ""
+    & claude
+}

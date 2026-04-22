@@ -14,3 +14,13 @@ desktop.ini
 
 # Logs
 *.log
+
+# Machine-specific state — never commit these
+# (all live in ~/  but guard against accidental copies here)
+profiles.json
+*.credentials.json
+.claude.json
+local/
+*.local.json
+*.local.ps1
+machine.json
