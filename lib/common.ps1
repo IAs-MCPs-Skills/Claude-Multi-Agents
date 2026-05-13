@@ -327,13 +327,52 @@ After the command completes:
 }
 
 # ------------------------------------------------------------------------------
+# Profile env overrides  (~/.claude/profile-env.json)
+# Formato: { "nome": { "ENV_VAR": "FONTE_ENV_VAR" } }
+# Ex: { "tereza": { "FENIX_TOKEN": "FENIX_TOKEN_PJ" } }
+# Na funcao shell: $env:FENIX_TOKEN = $env:FENIX_TOKEN_PJ
+# ------------------------------------------------------------------------------
+
+function Get-ProfileEnvFile { "$(Get-PrimaryDir)\profile-env.json" }
+
+function Load-ProfileEnv {
+    $path = Get-ProfileEnvFile
+    if (-not (Test-Path $path)) { return @{} }
+    try {
+        $json = Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json
+        $map  = @{}
+        foreach ($p in $json.PSObject.Properties) {
+            $vars = @{}
+            foreach ($v in $p.Value.PSObject.Properties) { $vars[$v.Name] = $v.Value }
+            $map[$p.Name] = $vars
+        }
+        return $map
+    } catch { return @{} }
+}
+
+function Save-ProfileEnv {
+    param($envMap)
+    $path = Get-ProfileEnvFile
+    $obj  = [PSCustomObject]@{}
+    foreach ($p in $envMap.GetEnumerator()) {
+        $vars = [PSCustomObject]@{}
+        foreach ($v in $p.Value.GetEnumerator()) {
+            $vars | Add-Member -NotePropertyName $v.Key -NotePropertyValue $v.Value -Force
+        }
+        $obj | Add-Member -NotePropertyName $p.Key -NotePropertyValue $vars -Force
+    }
+    $obj | ConvertTo-Json -Depth 5 | Set-Content -Path $path -Encoding UTF8
+}
+
+# ------------------------------------------------------------------------------
 # Shell integration
 # ------------------------------------------------------------------------------
 
 function Update-PowerShellProfile {
     param($map)
-    $pd = Get-PrimaryDir
-    $pn = Get-PrimaryName $map
+    $pd     = Get-PrimaryDir
+    $pn     = Get-PrimaryName $map
+    $envMap = Load-ProfileEnv
 
     $psPath = if (-not [string]::IsNullOrWhiteSpace($PROFILE)) { $PROFILE }
               else { "$env:USERPROFILE\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1" }
@@ -353,6 +392,12 @@ function Update-PowerShellProfile {
         $n = $e.Key; $d = $e.Value
         $lines.Add("function claude-$n {")
         $lines.Add("    `$env:CLAUDE_CONFIG_DIR = `"$d`"")
+        # Inject per-profile env var overrides
+        if ($envMap.ContainsKey($n)) {
+            foreach ($v in $envMap[$n].GetEnumerator()) {
+                $lines.Add("    `$env:$($v.Key) = `$env:$($v.Value)")
+            }
+        }
         $lines.Add("    Write-Host `"[claude] Perfil: $n`" -ForegroundColor Cyan")
         $lines.Add("    claude @args")
         $lines.Add('}'); $lines.Add('')
@@ -396,10 +441,11 @@ function Update-PowerShellProfile {
 
 function Update-BashRc {
     param($map)
-    $brc = "$env:USERPROFILE\.bashrc"
-    $pn  = Get-PrimaryName $map
-    $ms  = '# -- Claude Multi-Agents: inicio --'
-    $me  = '# -- Claude Multi-Agents: fim --'
+    $brc    = "$env:USERPROFILE\.bashrc"
+    $pn     = Get-PrimaryName $map
+    $envMap = Load-ProfileEnv
+    $ms     = '# -- Claude Multi-Agents: inicio --'
+    $me     = '# -- Claude Multi-Agents: fim --'
 
     $ex = if (Test-Path $brc) { Get-Content $brc -Raw -Encoding UTF8 } else { '' }
     $ex = $ex -replace "(?s)$([regex]::Escape($ms)).*?$([regex]::Escape($me))\n?", ''
@@ -413,6 +459,11 @@ function Update-BashRc {
         $d = ($e.Value -replace '\\', '/') -replace "^$([regex]::Escape($upfx))", '$HOME'
         $lines.Add("claude-$n() {")
         $lines.Add("    export CLAUDE_CONFIG_DIR=`"$d`"")
+        if ($envMap.ContainsKey($n)) {
+            foreach ($v in $envMap[$n].GetEnumerator()) {
+                $lines.Add("    export $($v.Key)=`"`$$($v.Value)`"")
+            }
+        }
         $lines.Add("    echo `"[claude] Perfil: $n`"")
         $lines.Add('    claude "$@"')
         $lines.Add('}'); $lines.Add('')
@@ -435,7 +486,8 @@ function Update-BashRc {
 
 function Update-BinLaunchers {
     param($map)
-    $bin = "$env:USERPROFILE\bin"
+    $bin    = "$env:USERPROFILE\bin"
+    $envMap = Load-ProfileEnv
     if (-not (Test-Path $bin)) { New-Item -ItemType Directory -Path $bin -Force | Out-Null }
     $upfx = $env:USERPROFILE -replace '\\', '/'
 
@@ -444,11 +496,25 @@ function Update-BinLaunchers {
         $ds = $d -replace '\\', '/'
         $db = $ds -replace "^$([regex]::Escape($upfx))", '$HOME'
 
-        $cmd = "@echo off`r`nset `"CLAUDE_CONFIG_DIR=$d`"`r`necho [claude] Perfil: $n`r`nclaude %*`r`n"
-        [System.IO.File]::WriteAllText("$bin\claude-$n.cmd", $cmd, [System.Text.UTF8Encoding]::new($false))
+        # .cmd launcher
+        $cmdLines = "@echo off`r`nset `"CLAUDE_CONFIG_DIR=$d`""
+        if ($envMap.ContainsKey($n)) {
+            foreach ($v in $envMap[$n].GetEnumerator()) {
+                $cmdLines += "`r`nset `"$($v.Key)=%$($v.Value)%`""
+            }
+        }
+        $cmdLines += "`r`necho [claude] Perfil: $n`r`nclaude %*`r`n"
+        [System.IO.File]::WriteAllText("$bin\claude-$n.cmd", $cmdLines, [System.Text.UTF8Encoding]::new($false))
 
-        $sh = "#!/usr/bin/env bash`nexport CLAUDE_CONFIG_DIR=`"$db`"`necho `"[claude] Perfil: $n`"`nclaude `"`$@`"`n"
-        [System.IO.File]::WriteAllText("$bin\claude-$n", $sh, [System.Text.UTF8Encoding]::new($false))
+        # bash launcher
+        $shLines = "#!/usr/bin/env bash`nexport CLAUDE_CONFIG_DIR=`"$db`""
+        if ($envMap.ContainsKey($n)) {
+            foreach ($v in $envMap[$n].GetEnumerator()) {
+                $shLines += "`nexport $($v.Key)=`"`$$($v.Value)`""
+            }
+        }
+        $shLines += "`necho `"[claude] Perfil: $n`"`nclaude `"`$@`"`n"
+        [System.IO.File]::WriteAllText("$bin\claude-$n", $shLines, [System.Text.UTF8Encoding]::new($false))
     }
 }
 
