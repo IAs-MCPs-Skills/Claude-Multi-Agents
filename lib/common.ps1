@@ -153,6 +153,59 @@ function Ensure-GlobalJunctions {
 }
 
 # ------------------------------------------------------------------------------
+# File hardlinks  (para grupos que compartilham arquivos de config)
+# ------------------------------------------------------------------------------
+
+function Apply-FileHardlinks {
+    param($group, $map)
+    if (-not $group.PSObject.Properties.Name -contains 'hardlinks') { return }
+    if (-not $group.hardlinks -or $group.hardlinks.Count -eq 0) { return }
+
+    $sourceDir = $map[$group.source]
+    foreach ($member in $group.members) {
+        if (-not $map.Contains($member)) { continue }
+        $memberDir = $map[$member]
+        foreach ($file in $group.hardlinks) {
+            $src = "$sourceDir\$file"
+            $dst = "$memberDir\$file"
+            if (-not (Test-Path $src)) { Write-Warn "  Arquivo fonte nao existe: $src"; continue }
+            if (Test-Path $dst) { Remove-Item $dst -Force }
+            $r = cmd /c "mklink /H `"$dst`" `"$src`"" 2>&1
+            if ($LASTEXITCODE -eq 0) { Write-Ok "  $member/$file hardlink -> $($group.source)/$file" }
+            else                      { Write-Warn "  Falha hardlink $member/$file : $r" }
+        }
+    }
+}
+
+function Sync-McpServers {
+    param($group, $map)
+    $sourceDir = $map[$group.source]
+    $srcClaude = "$sourceDir\.claude.json"
+    if (-not (Test-Path $srcClaude)) { return }
+    $srcJson = Get-Content $srcClaude -Raw | ConvertFrom-Json
+    if (-not $srcJson.mcpServers) { return }
+
+    foreach ($member in $group.members) {
+        if (-not $map.Contains($member)) { continue }
+        $dstClaude = "$($map[$member])\.claude.json"
+        if (-not (Test-Path $dstClaude)) { continue }
+        $dstJson = Get-Content $dstClaude -Raw | ConvertFrom-Json
+        if (-not $dstJson.mcpServers) {
+            $dstJson | Add-Member -NotePropertyName 'mcpServers' -NotePropertyValue ([PSCustomObject]@{}) -Force
+        }
+        $changed = $false
+        foreach ($mcp in $srcJson.mcpServers.PSObject.Properties) {
+            if (-not ($dstJson.mcpServers.PSObject.Properties.Name -contains $mcp.Name)) {
+                $dstJson.mcpServers | Add-Member -NotePropertyName $mcp.Name -NotePropertyValue $mcp.Value -Force
+                Write-Ok "  MCP '$($mcp.Name)' -> $member/.claude.json"
+                $changed = $true
+            }
+        }
+        if ($changed) { $dstJson | ConvertTo-Json -Depth 20 | Set-Content $dstClaude -Encoding UTF8 }
+    }
+}
+
+# ------------------------------------------------------------------------------
 # Groups  (~/.claude/groups.json)
 # Formato: [{ name, source, members[], share[] }]
 # share[] pode conter: 'projects', 'memory'
