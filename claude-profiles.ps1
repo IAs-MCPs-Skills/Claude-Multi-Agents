@@ -455,7 +455,7 @@ function Do-CreateGroup {
     Write-Host ''
     Write-Host '  O que compartilhar? (numeros separados por virgula, Enter = tudo)' -ForegroundColor White
     for ($i = 0; $i -lt $SHARE_OPTIONS.Count; $i++) {
-        Write-Host "    [$($i+1)] $($SHARE_OPTIONS[$i].key)  —  $($SHARE_OPTIONS[$i].desc)" -ForegroundColor DarkGray
+        Write-Host "    [$($i+1)] $($SHARE_OPTIONS[$i].key)  -  $($SHARE_OPTIONS[$i].desc)" -ForegroundColor DarkGray
     }
     Write-Host ''
     $sel2 = (Read-Host '  Numeros').Trim()

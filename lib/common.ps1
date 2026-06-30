@@ -383,6 +383,7 @@ function Update-PowerShellProfile {
     $me = '# -- Claude Multi-Agents: fim --'
 
     $ex = if (Test-Path $psPath) { Get-Content $psPath -Raw -Encoding UTF8 } else { '' }
+    if ($null -eq $ex) { $ex = '' }
     $ex = $ex -replace "(?s)$([regex]::Escape($ms)).*?$([regex]::Escape($me))\r?\n?", ''
 
     $lines = [System.Collections.Generic.List[string]]::new()
@@ -448,6 +449,7 @@ function Update-BashRc {
     $me     = '# -- Claude Multi-Agents: fim --'
 
     $ex = if (Test-Path $brc) { Get-Content $brc -Raw -Encoding UTF8 } else { '' }
+    if ($null -eq $ex) { $ex = '' }
     $ex = $ex -replace "(?s)$([regex]::Escape($ms)).*?$([regex]::Escape($me))\n?", ''
 
     $upfx = $env:USERPROFILE -replace '\\', '/'
