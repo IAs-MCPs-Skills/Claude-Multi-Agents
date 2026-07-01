@@ -70,41 +70,36 @@ function Setup-ProfileFiles {
     # Perfil primario: nada a fazer
     if ($Dir -eq $pd) { Write-Ok "  ${Name}: perfil primario (OK)"; return }
 
-    # Garantir que e um diretorio real (converter junction se necessario)
     $item = Get-Item $Dir -Force -ErrorAction SilentlyContinue
-    if ($item -and $item.LinkType) {
-        [System.IO.Directory]::Delete($Dir)
-        $item = $null
-    }
-    if (-not $item) {
-        New-Item -ItemType Directory -Path $Dir -Force | Out-Null
-        Write-Ok "  ${Name}: diretorio criado"
+
+    # Ja e junction para ~/.claude/
+    if ($item -and $item.LinkType -eq 'Junction' -and $item.Target -eq $pd) {
+        Write-Ok "  ${Name}: junction -> ~/.claude/ (OK)"
+        return
     }
 
-    # Copiar settings.json e CLAUDE.md do primario
-    foreach ($f in @('settings.json','CLAUDE.md')) {
-        $src = "$pd\$f"
-        $dst = "$Dir\$f"
-        if (Test-Path $src) {
-            Copy-Item $src $dst -Force
-            Write-Ok "  $f copiado"
+    # Remover o que existia (salvando credenciais se houver)
+    if ($item) {
+        if ($item.LinkType) {
+            [System.IO.Directory]::Delete($Dir)
+        } else {
+            $cred = "$Dir\.credentials.json"
+            if ([System.IO.File]::Exists($cred)) {
+                [System.IO.File]::Copy($cred, "$pd\.credentials-$Name.json", $true)
+                Write-Ok "  Credenciais salvas: ~/.claude/.credentials-$Name.json"
+            }
+            # Remover conteudo sem seguir junctions internas
+            Get-ChildItem $Dir -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_.LinkType) { [System.IO.Directory]::Delete($_.FullName) }
+                elseif (-not $_.PSIsContainer) { [System.IO.File]::Delete($_.FullName) }
+                else { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+            }
+            try { [System.IO.Directory]::Delete($Dir) } catch {}
         }
     }
 
-    # Junction para projects compartilhados -> ~/.claude/projects/
-    $projTgt  = "$pd\projects"
-    $projLink = "$Dir\projects"
-    if (-not (Test-Path $projTgt)) { New-Item -ItemType Directory $projTgt -Force | Out-Null }
-
-    $existProj = Get-Item $projLink -Force -ErrorAction SilentlyContinue
-    if ($existProj -and (-not $existProj.LinkType -or $existProj.Target -ne $projTgt)) {
-        if ($existProj.LinkType) { [System.IO.Directory]::Delete($projLink) }
-        else { Remove-Item $projLink -Recurse -Force -ErrorAction SilentlyContinue }
-    }
-    if (-not (Test-Path $projLink)) {
-        New-Item -ItemType Junction -Path $projLink -Target $projTgt | Out-Null
-        Write-Ok "  projects: junction -> ~/.claude/projects/"
-    }
+    New-Item -ItemType Junction -Path $Dir -Target $pd | Out-Null
+    Write-Ok "  ${Name}: junction criada -> ~/.claude/"
 }
 
 # ------------------------------------------------------------------------------
@@ -355,6 +350,10 @@ function Update-PowerShellProfile {
         $n = $e.Key; $d = $e.Value
         $lines.Add("function claude-$n {")
         $lines.Add("    `$env:CLAUDE_CONFIG_DIR = `"$d`"")
+        # Credential swap: cada perfil tem .credentials-<name>.json em ~/.claude/
+        $lines.Add("    `$_cf = `"$pd\.credentials-$n.json`"")
+        $lines.Add("    if (Test-Path `$_cf) { Copy-Item `$_cf `"$pd\.credentials.json`" -Force }")
+        $lines.Add("    elseif (`"$n`" -ne `"$pn`") { Write-Host '[claude] AVISO: sem credencial para ${n} - faca /login' -ForegroundColor Yellow }")
         # Inject per-profile env var overrides
         if ($envMap.ContainsKey($n)) {
             foreach ($v in $envMap[$n].GetEnumerator()) {
@@ -418,11 +417,15 @@ function Update-BashRc {
     $lines = [System.Collections.Generic.List[string]]::new()
     $lines.Add($ms); $lines.Add('')
 
+    $pdPosix = ($pd -replace '\\', '/') -replace "^$([regex]::Escape($upfx))", '$HOME'
     foreach ($e in $map.GetEnumerator()) {
         $n = $e.Key
         $d = ($e.Value -replace '\\', '/') -replace "^$([regex]::Escape($upfx))", '$HOME'
         $lines.Add("claude-$n() {")
         $lines.Add("    export CLAUDE_CONFIG_DIR=`"$d`"")
+        # Credential swap
+        $lines.Add("    _cf=`"$pdPosix/.credentials-$n.json`"")
+        $lines.Add('    if [ -f "$_cf" ]; then cp -f "$_cf" "' + "$pdPosix/.credentials.json" + '"; fi')
         if ($envMap.ContainsKey($n)) {
             foreach ($v in $envMap[$n].GetEnumerator()) {
                 $lines.Add("    export $($v.Key)=`"`$$($v.Value)`"")
