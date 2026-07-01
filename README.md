@@ -8,7 +8,7 @@ Manage multiple Claude Code accounts on a single Windows machine, without re-aut
 
 Claude Code has no native multi-account support. Every account needs its own config directory. This project automates the entire setup with a single installer — no manual file editing, no hardcoded paths.
 
-**What you get after running `install.ps1`:**
+**What you get after running `claude-profiles.ps1 install`:**
 
 - Per-profile isolation: each account has its own credentials, MCP servers, and `CLAUDE.md` (context)
 - Skills, agents, and commands are **shared across all profiles** via junction points — update once, everywhere updates
@@ -28,27 +28,53 @@ Claude Code has no native multi-account support. Every account needs its own con
 
 ## Install
 
-**Option A — one command (PowerShell):**
-
-```powershell
-irm https://raw.githubusercontent.com/Gustavo-b017/claude-multi-agents/main/install.ps1 | iex
-```
-
-**Option B — clone and run locally:**
+The single entry point is **`claude-profiles.ps1`**. There is no separate `install.ps1`.
 
 ```powershell
 git clone https://github.com/Gustavo-b017/claude-multi-agents
 cd claude-multi-agents
-.\install.ps1
+.\claude-profiles.ps1 install
 ```
 
-The installer will ask interactively:
-1. How many additional profiles? (your existing `~/.claude` stays as profile 1)
-2. A name for each profile (e.g. `work`, `freelance`, `client`)
-3. VS Code integration? (auto-updates `settings.json` on every switch)
-4. Git Bash integration? (adds aliases to `~/.bashrc`)
+If PowerShell blocks the script, run once:
 
-No admin rights required. No system-wide changes.
+```powershell
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+The installer asks interactively:
+1. A name for your primary profile (your existing `~/.claude`, default `primary`)
+2. How many additional profiles (1–5)
+3. A name for each (e.g. `work`, `freelance`, `client`)
+
+It then creates the directories, junctions, terminal aliases, and `/profile-*` slash commands. No admin rights required. No system-wide changes.
+
+---
+
+## Commands
+
+All commands run against `claude-profiles.ps1`. Run with no argument for the **interactive menu**; run with a subcommand for direct CLI use.
+
+```powershell
+.\claude-profiles.ps1                       # interactive menu (list / add / switch / rename / remove / groups / scan)
+.\claude-profiles.ps1 install               # first-time setup
+.\claude-profiles.ps1 scan                  # discover ~/.claude* dirs, register new ones, (re)generate all commands
+.\claude-profiles.ps1 add    -Profile work  # create a new profile
+.\claude-profiles.ps1 remove -Profile work  # delete a profile (asks for confirmation)
+.\claude-profiles.ps1 switch -Profile work  # switch active profile (used by the /profile-* slash commands)
+```
+
+### `scan` — moving to a new machine
+
+`scan` is the command for when the profile directories already exist on disk (e.g. you copied `~/.claude*` to another machine, or restored a backup) but the aliases and slash commands are missing. It:
+
+1. Finds every `~/.claude` and `~/.claude-<name>` directory
+2. Registers any that are missing from `profiles.json`
+3. Regenerates **all** access commands for every profile: `/profile-<name>` slash commands, `claude-<name>` PowerShell/Bash aliases, and `~/bin` launchers
+
+After a `scan`, open a new terminal and the `claude-<name>` aliases work again.
+
+> **On a fresh machine:** run `.\claude-profiles.ps1 install` first (it writes `profiles.json` and the shared dirs). If you brought your `~/.claude*` folders with you, run `.\claude-profiles.ps1 scan` to re-detect them and rebuild the commands.
 
 ---
 
@@ -129,8 +155,10 @@ Repeat for every profile. Your primary `~/.claude` is already authenticated.
   agents/               ← shared across all profiles
   commands/             ← shared (includes /profile-* slash commands)
   bin/
-    switch-profile.ps1  ← installed by this project
+    claude-profiles.ps1 ← installed copy (called by /profile-* slash commands)
   profiles.json         ← profile name → directory map
+  groups.json           ← optional: profiles that share history/memory
+  profile-env.json      ← optional: per-profile env var overrides
 
 ~/.claude-work/         ← additional profile
   .credentials.json     ← separate auth token
