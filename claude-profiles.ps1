@@ -5,10 +5,16 @@
 .DESCRIPTION
     Sem argumentos: menu interativo para criar, trocar, renomear e remover perfis.
     Com 'install': setup inicial completo (primeira vez).
+    Com 'scan': escaneia ~/.claude* no disco, registra perfis novos e gera os comandos.
+    Com 'add -Profile <nome>': cria um perfil novo direto pela CLI.
+    Com 'remove -Profile <nome>': remove um perfil direto pela CLI.
     Com 'switch -Profile <nome>': troca silenciosa usada pelos slash commands do Claude.
 .EXAMPLE
     .\claude-profiles.ps1
     .\claude-profiles.ps1 install
+    .\claude-profiles.ps1 scan
+    .\claude-profiles.ps1 add -Profile trabalho
+    .\claude-profiles.ps1 remove -Profile trabalho
     .\claude-profiles.ps1 switch -Profile trabalho -NoLaunch
 #>
 param(
@@ -83,6 +89,7 @@ function Show-Menu {
     Write-Host '  [4] Renomear perfil' -ForegroundColor White
     Write-Host '  [5] Remover perfil' -ForegroundColor White
     Write-Host '  [6] Gerenciar grupos (compartilhar entre contas)' -ForegroundColor White
+    Write-Host '  [7] Escanear ~/.claude* e gerar comandos' -ForegroundColor White
     Write-Host '  [0] Sair' -ForegroundColor DarkGray
     Write-Host ''
 }
@@ -351,6 +358,112 @@ function Do-Remove {
     Write-Host ''
     Write-Ok "Perfil '$name' removido."
     Write-Host "  Perfis restantes: $($map.Keys -join ', ')" -ForegroundColor DarkGray
+    Write-Host ''
+    return Load-ProfilesJson
+}
+
+# ==============================================================================
+# Escanear perfis existentes no disco (~/.claude*)
+# ==============================================================================
+
+function Get-DiscoveredProfiles {
+    # Retorna lista de @{ Name; Dir } para cada diretorio .claude / .claude-<nome>
+    $userHome = $env:USERPROFILE
+    $found = @()
+
+    # Diretorio primario (~/.claude)
+    $pd = Get-PrimaryDir
+    if (Test-Path $pd -PathType Container) {
+        $found += [PSCustomObject]@{ Name = 'primary'; Dir = $pd; IsPrimary = $true }
+    }
+
+    # Diretorios ~/.claude-<nome>
+    Get-ChildItem -Path $userHome -Directory -Force -Filter '.claude-*' -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $name = $_.Name -replace '^\.claude-', ''
+            if (-not [string]::IsNullOrWhiteSpace($name)) {
+                $found += [PSCustomObject]@{ Name = $name; Dir = $_.FullName; IsPrimary = $false }
+            }
+        }
+
+    return $found
+}
+
+function Do-Scan {
+    param($map)
+
+    Write-Host '  Escaneando perfis em' $env:USERPROFILE '...' -ForegroundColor White
+    Write-Host ''
+
+    $discovered = Get-DiscoveredProfiles
+    if ($discovered.Count -eq 0) {
+        Write-Warn 'Nenhum diretorio .claude encontrado.'
+        return $map
+    }
+
+    # Nome ja usado pelo primario no map (para nao duplicar)
+    $primaryName = Get-PrimaryName $map
+    $pd          = Get-PrimaryDir
+
+    # Classifica: ja registrado (por caminho) vs novo
+    $registered = @()
+    $new        = @()
+    foreach ($d in $discovered) {
+        $existing = $map.GetEnumerator() | Where-Object { $_.Value -eq $d.Dir } | Select-Object -First 1
+        if ($existing) {
+            $registered += [PSCustomObject]@{ Name = $existing.Key; Dir = $d.Dir }
+        } else {
+            # Diretorio primario nao registrado -> usa nome do primario
+            $name = if ($d.IsPrimary) { $primaryName } else { $d.Name }
+            # Evita colisao de nome com perfil ja existente apontando outro caminho
+            if ($map.Contains($name)) {
+                Write-Warn "Diretorio '$($d.Dir)' mapeia para nome '$name' ja em uso (aponta outro caminho). Ignorado."
+                continue
+            }
+            $new += [PSCustomObject]@{ Name = $name; Dir = $d.Dir }
+        }
+    }
+
+    Write-Host '  Encontrados:' -ForegroundColor White
+    foreach ($r in $registered) {
+        Write-Host "    claude-$($r.Name)  [ja registrado]" -ForegroundColor DarkGray
+    }
+    foreach ($n in $new) {
+        Write-Host "    claude-$($n.Name)  [NOVO]" -ForegroundColor Green
+    }
+    Write-Host ''
+
+    if ($new.Count -gt 0) {
+        if (Ask-YesNo "Importar $($new.Count) perfil(is) novo(s) e registrar no profiles.json?") {
+            foreach ($n in $new) {
+                Write-Step "Importando '$($n.Name)'..."
+                $map[$n.Name] = $n.Dir
+                # Garante estrutura minima sem sobrescrever conteudo existente
+                Setup-ProfileFiles -Name $n.Name -Dir $n.Dir -TemplatesDir $TemplatesDir
+            }
+            Save-ProfilesJson $map
+        } else {
+            Write-Warn 'Importacao cancelada. Comandos serao gerados apenas para perfis ja registrados.'
+        }
+    } else {
+        Write-Ok 'Todos os perfis do disco ja estao registrados.'
+    }
+
+    # (Re)gera comandos e launchers para TODOS os perfis do map
+    Write-Host ''
+    Write-Step 'Gerando comandos de acesso para cada perfil...'
+    Sync-Script
+    foreach ($name in $map.Keys) {
+        New-SlashCommand -Name $name -ScriptPath $InstalledScript
+        Write-Ok "  /profile-$name  +  claude-$name"
+    }
+    Update-PowerShellProfile $map
+    if (Has-Bash) { Update-BashRc $map }
+    Update-BinLaunchers $map
+
+    Write-Host ''
+    Write-Ok 'Scan concluido.'
+    Write-Host '  Abra um novo terminal para usar os comandos claude-<perfil>.' -ForegroundColor DarkGray
     Write-Host ''
     return Load-ProfilesJson
 }
@@ -653,6 +766,86 @@ function Do-SwitchDirect {
 }
 
 # ==============================================================================
+# scan / add / remove — subcomandos diretos (CLI)
+# ==============================================================================
+
+function Assert-Installed {
+    $pd = Get-PrimaryDir
+    if (-not (Test-Path $pd) -or -not (Test-Path "$pd\profiles.json")) {
+        Write-Err "Nao instalado. Execute primeiro: .\claude-profiles.ps1 install"
+        exit 1
+    }
+}
+
+function Do-ScanDirect {
+    Assert-Installed
+    Show-Banner
+    Write-Host ''
+    $map = Load-ProfilesJson
+    Do-Scan $map | Out-Null
+}
+
+function Do-AddDirect {
+    param([string]$ProfileName)
+    Assert-Installed
+    $map  = Load-ProfilesJson
+    $name = Sanitize-Name $ProfileName
+    if ([string]::IsNullOrEmpty($name)) { Write-Err 'Nome invalido. Use: add -Profile <nome>'; exit 1 }
+    if ($map.Contains($name))           { Write-Err "Perfil '$name' ja existe."; exit 1 }
+
+    $dir        = "$env:USERPROFILE\.claude-$name"
+    $map[$name] = $dir
+
+    Write-Step "Criando perfil '$name'..."
+    Ensure-SharedDirs
+    Setup-ProfileFiles -Name $name -Dir $dir -TemplatesDir $TemplatesDir
+    Save-ProfilesJson $map
+    Sync-Script
+    New-SlashCommand -Name $name -ScriptPath $InstalledScript
+    Update-PowerShellProfile $map
+    if (Has-Bash) { Update-BashRc $map }
+    Update-BinLaunchers $map
+
+    Write-Host ''
+    Write-Ok "Perfil '$name' criado. Novo terminal: claude-$name (depois /login)."
+}
+
+function Do-RemoveDirect {
+    param([string]$ProfileName)
+    Assert-Installed
+    $map  = Load-ProfilesJson
+    $name = Sanitize-Name $ProfileName
+    $pn   = Get-PrimaryName $map
+
+    if (-not $map.Contains($name)) { Write-Err "Perfil '$name' nao encontrado. Disponiveis: $($map.Keys -join ', ')"; exit 1 }
+    if ($name -eq $pn)             { Write-Err "Nao e possivel remover o perfil primario '$pn'."; exit 1 }
+
+    $dir = $map[$name]
+    Write-Warn "Vai apagar permanentemente: $dir"
+    if (-not (Ask-YesNo "Confirma remocao do perfil '$name'?")) { Write-Warn 'Cancelado.'; exit 0 }
+
+    if (Test-Path $dir) {
+        Remove-Junctions -Dir $dir
+        Remove-Item -Path $dir -Recurse -Force
+    }
+    $map.Remove($name)
+    Save-ProfilesJson $map
+
+    $cmdFile = "$(Get-PrimaryDir)\commands\profile-$name.md"
+    if (Test-Path $cmdFile) { Remove-Item $cmdFile -Force }
+    $bin = "$env:USERPROFILE\bin"
+    foreach ($ext in @('.cmd', '')) {
+        $f = "$bin\claude-$name$ext"
+        if (Test-Path $f) { Remove-Item $f -Force }
+    }
+    Update-PowerShellProfile $map
+    if (Has-Bash) { Update-BashRc $map }
+
+    Write-Host ''
+    Write-Ok "Perfil '$name' removido. Restantes: $($map.Keys -join ', ')"
+}
+
+# ==============================================================================
 # Entry point
 # ==============================================================================
 
@@ -660,6 +853,26 @@ switch ($Command.ToLower()) {
 
     'install' {
         Do-Install
+    }
+
+    'scan' {
+        Do-ScanDirect
+    }
+
+    'add' {
+        if ([string]::IsNullOrWhiteSpace($Profile)) {
+            Write-Err 'Use: .\claude-profiles.ps1 add -Profile <nome>'
+            exit 1
+        }
+        Do-AddDirect -ProfileName $Profile
+    }
+
+    'remove' {
+        if ([string]::IsNullOrWhiteSpace($Profile)) {
+            Write-Err 'Use: .\claude-profiles.ps1 remove -Profile <nome>'
+            exit 1
+        }
+        Do-RemoveDirect -ProfileName $Profile
     }
 
     'switch' {
@@ -696,8 +909,9 @@ switch ($Command.ToLower()) {
                 '4' { $map = Do-Rename $map }
                 '5' { $map = Do-Remove $map }
                 '6' { Do-ManageGroups $map }
+                '7' { $map = Do-Scan $map }
                 '0' { Write-Host '  Ate logo!' -ForegroundColor DarkGray }
-                default { Write-Warn 'Opcao invalida. Escolha entre 0 e 5.' }
+                default { Write-Warn 'Opcao invalida. Escolha entre 0 e 7.' }
             }
         } while ($opt -ne '0')
 
