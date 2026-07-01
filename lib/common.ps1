@@ -49,107 +49,56 @@ function Get-PrimaryName {
     foreach ($e in $map.GetEnumerator()) {
         if ($e.Value -eq $pd) { return $e.Key }
     }
-    return if ($map.Count -gt 0) { @($map.Keys)[0] } else { 'primary' }
+    if ($map.Count -gt 0) { return @($map.Keys)[0] }
+    return 'primary'
 }
 
 # ------------------------------------------------------------------------------
 # Profile setup
 # ------------------------------------------------------------------------------
 
-$GLOBAL_JUNCTIONS = @('skills', 'agents', 'commands', 'hooks', 'plugins')
-
 function Ensure-SharedDirs {
-    $pd = Get-PrimaryDir
-    foreach ($d in ($GLOBAL_JUNCTIONS + @('bin'))) {
-        $p = "$pd\$d"
-        if (-not (Test-Path $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
-    }
+    # ponytail: nao cria dirs em ~/.claude/ que o ECC nao gerencia — so garante bin/
+    $pd = "$(Get-PrimaryDir)\bin"
+    if (-not (Test-Path $pd)) { New-Item -ItemType Directory -Path $pd -Force | Out-Null }
 }
 
 function Setup-ProfileFiles {
-    param(
-        [string]$Name,
-        [string]$Dir,
-        [string]$TemplatesDir,
-        [switch]$Force
-    )
+    param([string]$Name, [string]$Dir, [string]$TemplatesDir, [switch]$Force)
     $pd = Get-PrimaryDir
 
-    if (-not (Test-Path $Dir)) {
-        New-Item -ItemType Directory -Path $Dir -Force | Out-Null
-        Write-Ok "  Diretorio criado: $Dir"
+    # Perfil primario: nada a fazer
+    if ($Dir -eq $pd) { Write-Ok "  ${Name}: perfil primario (OK)"; return }
+
+    $item = Get-Item $Dir -Force -ErrorAction SilentlyContinue
+
+    # Ja e junction correta
+    if ($item -and $item.LinkType -eq 'Junction' -and $item.Target -eq $pd) {
+        Write-Ok "  ${Name}: junction -> ~/.claude/ (OK)"
+        return
     }
 
-    $st = "$Dir\settings.json"
-    if (-not (Test-Path $st) -or $Force) {
-        $src = if ($TemplatesDir) { Join-Path $TemplatesDir 'settings.json' } else { $null }
-        if ($src -and (Test-Path $src)) { Copy-Item $src $st -Force }
-        else { '{}' | Set-Content -Path $st -Encoding UTF8 }
-        Write-Ok "  settings.json criado"
-    }
-
-    $cm = "$Dir\CLAUDE.md"
-    if (-not (Test-Path $cm) -or $Force) {
-        $src = if ($TemplatesDir) { Join-Path $TemplatesDir 'CLAUDE.md' } else { $null }
-        $content = if ($src -and (Test-Path $src)) {
-            (Get-Content $src -Raw -Encoding UTF8) -replace '<name>', $Name
+    # Remover o que existia (salvando credenciais se houver)
+    if ($item) {
+        if ($item.LinkType) {
+            [System.IO.Directory]::Delete($Dir)
         } else {
-            "# Perfil: $Name`n`nDescreva aqui o contexto e foco deste perfil.`n"
-        }
-        $content | Set-Content -Path $cm -Encoding UTF8
-        Write-Ok "  CLAUDE.md criado"
-    }
-
-    Ensure-GlobalJunctions -Dir $Dir -Quiet
-}
-
-function Remove-Junctions {
-    param([string]$Dir)
-    foreach ($link in $GLOBAL_JUNCTIONS) {
-        $lp = "$Dir\$link"
-        if (Test-Path $lp) { cmd /c "rmdir `"$lp`"" 2>&1 | Out-Null }
-    }
-}
-
-function Ensure-GlobalJunctions {
-    param([string]$Dir, [switch]$Quiet)
-    $pd = Get-PrimaryDir
-    Ensure-SharedDirs
-    foreach ($link in $GLOBAL_JUNCTIONS) {
-        $lp = "$Dir\$link"
-        $tp = "$pd\$link"
-
-        if (-not (Test-Path $lp)) {
-            cmd /c "mklink /J `"$lp`" `"$tp`"" 2>&1 | Out-Null
-            if (-not $Quiet) { Write-Ok "  Junction criada: $link -> ~/.claude/$link" }
-            continue
-        }
-
-        $item = Get-Item $lp -Force
-        if ($item.LinkType -eq 'Junction') {
-            # Junction exists but might point to wrong target — fix if stale
-            if ($item.Target -ne $tp) {
-                cmd /c "rmdir `"$lp`"" 2>&1 | Out-Null
-                cmd /c "mklink /J `"$lp`" `"$tp`"" 2>&1 | Out-Null
-                if (-not $Quiet) { Write-Ok "  ${link}: junction corrigida -> ~/.claude/$link" }
+            $cred = "$Dir\.credentials.json"
+            if ([System.IO.File]::Exists($cred)) {
+                [System.IO.File]::Copy($cred, "$pd\.credentials-$Name.json", $true)
+                Write-Ok "  Credenciais salvas: ~/.claude/.credentials-$Name.json"
             }
-            continue
-        }
-
-        # Diretorio real: mescla conteudo para global (global vence conflitos), converte em junction
-        Get-ChildItem $lp -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
-            $rel  = $_.FullName.Substring($lp.Length + 1)
-            $dest = Join-Path $tp $rel
-            if (-not (Test-Path $dest)) {
-                $destDir = Split-Path $dest
-                if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
-                Copy-Item $_.FullName $dest -Force
+            # Remover junctions internas antes de apagar o dir
+            Get-ChildItem $Dir -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_.LinkType) { [System.IO.Directory]::Delete($_.FullName) }
+                elseif (-not $_.PSIsContainer) { [System.IO.File]::Delete($_.FullName) }
             }
+            try { [System.IO.Directory]::Delete($Dir) } catch {}
         }
-        Remove-Item $lp -Recurse -Force
-        cmd /c "mklink /J `"$lp`" `"$tp`"" 2>&1 | Out-Null
-        if (-not $Quiet) { Write-Ok "  ${link}: conteudo mesclado para global, convertido em junction" }
     }
+
+    New-Item -ItemType Junction -Path $Dir -Target $pd | Out-Null
+    Write-Ok "  ${Name}: junction criada -> ~/.claude/"
 }
 
 # ------------------------------------------------------------------------------
@@ -323,6 +272,13 @@ After the command completes:
 - VS Code panel: Ctrl+Shift+P -> Developer: Reload Window
 - Terminal: abra um novo terminal e execute ``claude-$Name``
 "@
+    $dir = Split-Path $f
+    $item = Get-Item -Path $dir -Force -ErrorAction SilentlyContinue
+    # ponytail: junction auto-referencial (Target == próprio caminho) é inutilizável — remove e cria dir real
+    if ($item -and $item.LinkType -eq 'Junction' -and $item.Target -eq $dir) {
+        cmd /c "rmdir `"$dir`"" 2>&1 | Out-Null
+    }
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
     $c | Set-Content -Path $f -Encoding UTF8
 }
 
@@ -392,6 +348,10 @@ function Update-PowerShellProfile {
     foreach ($e in $map.GetEnumerator()) {
         $n = $e.Key; $d = $e.Value
         $lines.Add("function claude-$n {")
+        # Credential swap: cada perfil tem .credentials-<name>.json em ~/.claude/
+        $lines.Add("    `$_cf = `"$pd\.credentials-$n.json`"")
+        $lines.Add("    if (Test-Path `$_cf) { Copy-Item `$_cf `"$pd\.credentials.json`" -Force }")
+        $lines.Add("    elseif (`"$n`" -ne `"$pn`") { Write-Host '[claude] AVISO: sem credencial para $n - faca /login' -ForegroundColor Yellow }")
         $lines.Add("    `$env:CLAUDE_CONFIG_DIR = `"$d`"")
         # Inject per-profile env var overrides
         if ($envMap.ContainsKey($n)) {
@@ -456,10 +416,14 @@ function Update-BashRc {
     $lines = [System.Collections.Generic.List[string]]::new()
     $lines.Add($ms); $lines.Add('')
 
+    $pdPosix = ($pd -replace '\\', '/') -replace "^$([regex]::Escape($upfx))", '$HOME'
     foreach ($e in $map.GetEnumerator()) {
         $n = $e.Key
         $d = ($e.Value -replace '\\', '/') -replace "^$([regex]::Escape($upfx))", '$HOME'
         $lines.Add("claude-$n() {")
+        # Credential swap
+        $lines.Add("    _cf=`"$pdPosix/.credentials-$n.json`"")
+        $lines.Add('    if [ -f "$_cf" ]; then cp -f "$_cf" "' + "$pdPosix" + '/.credentials.json"; fi')
         $lines.Add("    export CLAUDE_CONFIG_DIR=`"$d`"")
         if ($envMap.ContainsKey($n)) {
             foreach ($v in $envMap[$n].GetEnumerator()) {
