@@ -108,6 +108,70 @@ function Setup-ProfileFiles {
 }
 
 # ------------------------------------------------------------------------------
+# Global junctions  (dirs de tooling compartilhados via ~/.claude/)
+# Estado por-grupo (projects, memory, sessions, tasks, plans, todos, backups)
+# e gerenciado por Apply-Group, nao aqui.
+# ------------------------------------------------------------------------------
+
+$GLOBAL_JUNCTIONS = @(
+    'skills', 'agents', 'commands', 'hooks', 'plugins',
+    'cache', 'chrome', 'paste-cache', 'file-history', 'jobs'
+)
+
+function Remove-Junctions {
+    # Desconecta TODAS as junctions/symlinks filhas de $Dir antes de um delete
+    # recursivo. Critico: sem isso, Remove-Item -Recurse pode apagar o CONTEUDO
+    # dos alvos compartilhados (~/.claude/{memory,projects,skills,...}).
+    param([string]$Dir)
+    if (-not (Test-Path $Dir)) { return }
+    Get-ChildItem -LiteralPath $Dir -Force -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+        if ($_.LinkType) { cmd /c "rmdir `"$($_.FullName)`"" 2>&1 | Out-Null }
+    }
+}
+
+function Ensure-GlobalJunctions {
+    # Garante que cada dir de $GLOBAL_JUNCTIONS em $Dir seja junction -> ~/.claude/<dir>.
+    param([string]$Dir, [switch]$Quiet)
+    $pd = Get-PrimaryDir
+    Ensure-SharedDirs
+    foreach ($link in $GLOBAL_JUNCTIONS) {
+        $lp = "$Dir\$link"
+        $tp = "$pd\$link"
+        if (-not (Test-Path $tp)) { continue }   # nao cria dirs que o Claude Code gerencia
+
+        if (-not (Test-Path $lp)) {
+            cmd /c "mklink /J `"$lp`" `"$tp`"" 2>&1 | Out-Null
+            if (-not $Quiet) { Write-Ok "  Junction criada: $link -> ~/.claude/$link" }
+            continue
+        }
+
+        $item = Get-Item $lp -Force
+        if ($item.LinkType) {
+            if ($item.Target -ne $tp) {
+                cmd /c "rmdir `"$lp`"" 2>&1 | Out-Null
+                cmd /c "mklink /J `"$lp`" `"$tp`"" 2>&1 | Out-Null
+                if (-not $Quiet) { Write-Ok "  ${link}: junction corrigida -> ~/.claude/$link" }
+            }
+            continue
+        }
+
+        # Diretorio real: mescla conteudo para global (global vence), converte em junction
+        Get-ChildItem $lp -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $rel  = $_.FullName.Substring($lp.Length + 1)
+            $dest = Join-Path $tp $rel
+            if (-not (Test-Path $dest)) {
+                $destDir = Split-Path $dest
+                if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+                Copy-Item $_.FullName $dest -Force
+            }
+        }
+        Remove-Item $lp -Recurse -Force
+        cmd /c "mklink /J `"$lp`" `"$tp`"" 2>&1 | Out-Null
+        if (-not $Quiet) { Write-Ok "  ${link}: conteudo mesclado para global, convertido em junction" }
+    }
+}
+
+# ------------------------------------------------------------------------------
 # File hardlinks  (para grupos que compartilham arquivos de config)
 # ------------------------------------------------------------------------------
 
