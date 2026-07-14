@@ -166,6 +166,7 @@ function Do-Add {
     Write-Step "Criando perfil '$name'..."
     Ensure-SharedDirs
     Setup-ProfileFiles -Name $name -Dir $dir -TemplatesDir $TemplatesDir
+    Ensure-GlobalJunctions -Dir $dir
     Save-ProfilesJson $map
     Sync-Script
     New-SlashCommand -Name $name -ScriptPath $InstalledScript
@@ -799,6 +800,7 @@ function Do-AddDirect {
     Write-Step "Criando perfil '$name'..."
     Ensure-SharedDirs
     Setup-ProfileFiles -Name $name -Dir $dir -TemplatesDir $TemplatesDir
+    Ensure-GlobalJunctions -Dir $dir
     Save-ProfilesJson $map
     Sync-Script
     New-SlashCommand -Name $name -ScriptPath $InstalledScript
