@@ -233,6 +233,17 @@ function Apply-Group {
     }
 }
 
+function Remove-Junctions {
+    # Remove apenas os reparse points (junctions) de um dir, sem seguir/apagar o alvo.
+    # cmd /c rmdir remove o link e nunca toca no conteudo apontado — essencial antes
+    # de Remove-Item -Recurse, que seguiria a junction e apagaria a fonte compartilhada.
+    param([string]$Dir)
+    if (-not (Test-Path $Dir)) { return }
+    Get-ChildItem -Force $Dir | Where-Object { $_.LinkType -eq 'Junction' } | ForEach-Object {
+        cmd /c "rmdir `"$($_.FullName)`"" 2>&1 | Out-Null
+    }
+}
+
 function Remove-Group {
     param($group, $map)
     $sourceDir = $map[$group.source]

@@ -831,6 +831,17 @@ function Do-RemoveDirect {
     $map.Remove($name)
     Save-ProfilesJson $map
 
+    # Tira o perfil removido de qualquer grupo em que era membro
+    $groups = Load-Groups
+    $groupsChanged = $false
+    foreach ($g in $groups) {
+        if ($g.members -contains $name) {
+            $g.members = @($g.members | Where-Object { $_ -ne $name })
+            $groupsChanged = $true
+        }
+    }
+    if ($groupsChanged) { Save-Groups $groups }
+
     $cmdFile = "$(Get-PrimaryDir)\commands\profile-$name.md"
     if (Test-Path $cmdFile) { Remove-Item $cmdFile -Force }
     $bin = "$env:USERPROFILE\bin"
