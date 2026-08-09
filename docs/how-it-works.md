@@ -16,7 +16,7 @@ Each directory is a fully independent profile:
 | `.credentials.json` | OAuth token — who is logged in |
 | `.claude.json` | MCP servers active for this account (managed by `claude mcp add`) |
 | `settings.json` | Permissions, effort level, and other Claude Code settings |
-| `CLAUDE.md` | Global context instructions |
+| `CLAUDE.md` | Global context instructions — hardlinked to `~/.claude/CLAUDE.md`, shared across all profiles |
 | `skills/` | Available skills |
 | `agents/` | Custom agents |
 | `commands/` | Slash commands |
@@ -47,6 +47,18 @@ This means:
 - You never need to copy or sync anything
 
 Junction points behave like real directories from the OS's perspective. Claude Code reads them without knowing they redirect.
+
+Junctions only work for **directories**. `CLAUDE.md` is a single file, so it uses a different mechanism — see below.
+
+---
+
+## CLAUDE.md: shared via hardlink
+
+`CLAUDE.md` is a file, not a directory, so it can't use a junction. Every profile's `~/.claude-<name>/CLAUDE.md` is instead a **hardlink** to `~/.claude/CLAUDE.md` — both paths point to the same data on disk; editing it from any profile updates it for all of them.
+
+Why a hardlink and not a symlink: a file symlink on Windows requires administrator privileges (fails with "A operacao requer privilegio de administrador" otherwise); a junction only works for directories. A hardlink needs no admin rights, but only works within the **same volume/drive**. If the target profile directory lives on a different volume, `Setup-ProfileFiles` falls back to copying `CLAUDE.md` instead, with a warning — that profile then has its own independent copy.
+
+`settings.json` is always copied (never linked), since permissions and effort level are meant to differ per profile.
 
 ---
 
@@ -114,9 +126,9 @@ You don't need to re-run the full installer. You can add a profile manually:
 # 1. Create the directory
 mkdir $env:USERPROFILE\.claude-newprofile
 
-# 2. Copy templates
+# 2. Copy settings.json; hardlink CLAUDE.md (falls back to copy on a different volume)
 copy templates\settings.json $env:USERPROFILE\.claude-newprofile\
-copy templates\CLAUDE.md $env:USERPROFILE\.claude-newprofile\
+cmd /c "mklink /H `"$env:USERPROFILE\.claude-newprofile\CLAUDE.md`" `"$env:USERPROFILE\.claude\CLAUDE.md`""
 
 # 3. Create junction points
 cmd /c "mklink /J `"$env:USERPROFILE\.claude-newprofile\skills`"   `"$env:USERPROFILE\.claude\skills`""

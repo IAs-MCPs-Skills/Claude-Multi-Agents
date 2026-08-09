@@ -10,8 +10,8 @@ Claude Code has no native multi-account support. Every account needs its own con
 
 **What you get after running `claude-profiles.ps1 install`:**
 
-- Per-profile isolation: each account has its own credentials, MCP servers, and `CLAUDE.md` (context)
-- Skills, agents, and commands are **shared across all profiles** via junction points — update once, everywhere updates
+- Per-profile isolation: each account has its own credentials and MCP servers
+- Skills, agents, commands, and `CLAUDE.md` (context) are **shared across all profiles** — update once, everywhere updates
 - Terminal aliases: `claude-work`, `claude-personal` open Claude with the right account instantly
 - Slash commands: `/profile-work` switches from inside Claude Code
 - VS Code panel integration: one `Ctrl+Shift+P → Developer: Reload Window` is enough
@@ -122,7 +122,7 @@ claude mcp list
 > Claude Code armazena MCPs no `.claude.json` (gerenciado pelo `claude mcp add`).
 > A chave `mcpServers` em `settings.json` e ignorada silenciosamente.
 
-**Context:** edit `~/.claude-<name>/CLAUDE.md` — describe the account's role, active projects, conventions.
+**Context:** edit `~/.claude/CLAUDE.md` (or the same file via any `~/.claude-<name>/CLAUDE.md` hardlink — it's the same file, shared by every profile).
 
 **Skills and agents:** add to `~/.claude/skills/` or `~/.claude/agents/` — junction points keep them shared automatically.
 
@@ -150,7 +150,7 @@ Repeat for every profile. Your primary `~/.claude` is already authenticated.
   .credentials.json     ← auth token
   .claude.json          ← MCPs (gerenciado por `claude mcp add`)
   settings.json         ← permissoes, effort level, etc.
-  CLAUDE.md             ← global context
+  CLAUDE.md             ← shared context (source of the hardlink)
   skills/               ← shared across all profiles
   agents/               ← shared across all profiles
   commands/             ← shared (includes /profile-* slash commands)
@@ -164,7 +164,7 @@ Repeat for every profile. Your primary `~/.claude` is already authenticated.
   .credentials.json     ← separate auth token
   .claude.json          ← MCPs deste perfil (gerenciado por `claude mcp add`)
   settings.json         ← permissoes, effort level, etc.
-  CLAUDE.md             ← separate context
+  CLAUDE.md             → hardlink → ~/.claude/CLAUDE.md (same file)
   skills/  → junction → ~/.claude/skills/
   agents/  → junction → ~/.claude/agents/
   commands/ → junction → ~/.claude/commands/
