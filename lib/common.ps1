@@ -81,13 +81,26 @@ function Setup-ProfileFiles {
         Write-Ok "  ${Name}: diretorio criado"
     }
 
-    # Copiar settings.json e CLAUDE.md do primario
-    foreach ($f in @('settings.json','CLAUDE.md')) {
-        $src = "$pd\$f"
-        $dst = "$Dir\$f"
-        if (Test-Path $src) {
-            Copy-Item $src $dst -Force
-            Write-Ok "  $f copiado"
+    # Copiar settings.json; CLAUDE.md via hardlink (referencia compartilhada)
+    $src = "$pd\settings.json"
+    $dst = "$Dir\settings.json"
+    if (Test-Path $src) {
+        Copy-Item $src $dst -Force
+        Write-Ok "  settings.json copiado"
+    }
+
+    # CLAUDE.md: hardlink -> ~/.claude/CLAUDE.md
+    $src = "$pd\CLAUDE.md"
+    if (Test-Path $src) {
+        if (Test-Path "$Dir\CLAUDE.md") {
+            Remove-Item "$Dir\CLAUDE.md" -Force
+        }
+        try {
+            New-Item -ItemType HardLink -Path "$Dir\CLAUDE.md" -Target $src -ErrorAction Stop | Out-Null
+            Write-Ok "  CLAUDE.md: hardlink -> ~/.claude/CLAUDE.md"
+        } catch {
+            Copy-Item $src "$Dir\CLAUDE.md" -Force
+            Write-Warn "  CLAUDE.md: hardlink falhou, copiado (edite em cada perfil)"
         }
     }
 
