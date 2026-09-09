@@ -411,7 +411,7 @@ function Update-PowerShellProfile {
     $pn     = Get-PrimaryName $map
     $envMap = Load-ProfileEnv
 
-    $psPath = if (-not [string]::IsNullOrWhiteSpace($PROFILE)) { $PROFILE }
+    $psPath = if (-not [string]::IsNullOrWhiteSpace($global:PROFILE)) { $global:PROFILE }
               else { "$env:USERPROFILE\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1" }
     $psDir = Split-Path $psPath
     if (-not (Test-Path $psDir)) { New-Item -ItemType Directory -Path $psDir -Force | Out-Null }
