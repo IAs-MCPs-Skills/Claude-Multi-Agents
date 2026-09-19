@@ -128,7 +128,10 @@ function Setup-ProfileFiles {
 
 $GLOBAL_JUNCTIONS = @(
     'skills', 'agents', 'commands', 'hooks', 'plugins',
-    'cache', 'chrome', 'paste-cache', 'file-history', 'jobs'
+    'cache', 'chrome', 'paste-cache', 'file-history', 'jobs',
+    'backups', 'bin', 'ecc', 'homunculus', 'ide', 'mcp-configs',
+    'memory', 'rules', 'scripts', 'session-env', 'sessions',
+    'shell-snapshots', 'todos'
 )
 
 function Remove-Junctions {
