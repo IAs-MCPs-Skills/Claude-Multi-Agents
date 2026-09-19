@@ -174,6 +174,28 @@ Repeat for every profile. Your primary `~/.claude` is already authenticated.
 
 ---
 
+## O que é compartilhado entre perfis
+
+Regra: **pasta → junction, arquivo → hardlink**, sempre apontando para `~/.claude`. Nada compartilhado vive duplicado num perfil — edita em qualquer lugar, todos enxergam a mesma coisa.
+
+**Pastas (junction) — `~/.claude-<nome>/<pasta>` → `~/.claude/<pasta>`:**
+
+`skills`, `agents`, `commands`, `hooks`, `plugins`, `cache`, `chrome`, `paste-cache`, `file-history`, `jobs`, `backups`, `bin`, `ecc`, `homunculus`, `ide`, `mcp-configs`, `memory`, `rules`, `scripts`, `session-env`, `sessions`, `shell-snapshots`, `todos`, `projects`
+
+**Arquivo (hardlink):**
+
+- `CLAUDE.md` — não dá pra fazer junction de arquivo; hardlink resolve porque é o mesmo inode em ambos os caminhos.
+
+**Nunca compartilhado (fica local a cada perfil):**
+
+- `.credentials.json`, `.claude.json`, `*.local.json`, `profiles.json`, `machine.json` (ver `.gitignore`) — é a identidade/login daquele perfil; linkar faria as contas colidirem.
+- `settings.json` — hoje é **cópia**, não link (cada perfil pode divergir permissões/effort sem afetar os outros).
+- `daemon` — fora da lista de propósito: é estado per-perfil.
+
+Lista de pastas compartilhadas mora em `lib/common.ps1` → `$GLOBAL_JUNCTIONS`. Pasta nova pra compartilhar entra ali.
+
+---
+
 ## How it works
 
 → [docs/how-it-works.md](docs/how-it-works.md)
