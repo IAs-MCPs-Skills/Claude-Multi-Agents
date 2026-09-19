@@ -30,6 +30,7 @@ $ScriptPath   = $MyInvocation.MyCommand.Path
 $ScriptDir    = Split-Path -Parent $ScriptPath
 $TemplatesDir = Join-Path $ScriptDir 'templates'
 $LibPath      = Join-Path $ScriptDir 'lib\common.ps1'
+$PathLibPath  = Join-Path $ScriptDir 'lib\path.ps1'
 
 # Carrega funcoes compartilhadas (local ou GitHub)
 if (Test-Path $LibPath) {
@@ -47,6 +48,20 @@ if (Test-Path $LibPath) {
         Write-Host '  Erro: lib/common.ps1 nao encontrado e download falhou.' -ForegroundColor Red
         Write-Host '  Clone o repositorio: git clone https://github.com/Gustavo-b017/claude-multi-agents' -ForegroundColor Yellow
         exit 1
+    }
+}
+
+# lib/path.ps1: checagem de PATH pro cmd.exe. Opcional — se faltar, so pula a checagem.
+if (Test-Path $PathLibPath) {
+    . $PathLibPath
+} else {
+    $tmpPath = Join-Path $env:TEMP 'cma-path.ps1'
+    try {
+        Invoke-WebRequest 'https://raw.githubusercontent.com/Gustavo-b017/claude-multi-agents/main/lib/path.ps1' `
+            -OutFile $tmpPath -UseBasicParsing
+        . $tmpPath
+    } catch {
+        Write-Host '  Aviso: lib/path.ps1 nao encontrado e download falhou (checagem de PATH sera pulada).' -ForegroundColor Yellow
     }
 }
 
