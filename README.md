@@ -12,7 +12,7 @@ Claude Code has no native multi-account support. Every account needs its own con
 
 - Per-profile isolation: each account has its own credentials and MCP servers
 - Skills, agents, commands, and `CLAUDE.md` (context) are **shared across all profiles** — update once, everywhere updates
-- Terminal aliases: `claude-work`, `claude-personal` open Claude with the right account instantly
+- Terminal aliases: `claude-work`, `claude-personal` open Claude with the right account instantly — in PowerShell, Git Bash and cmd.exe (the installer adds `~/bin` to your user PATH so cmd.exe finds the `.cmd` launchers)
 - Slash commands: `/profile-work` switches from inside Claude Code
 - VS Code panel integration: one `Ctrl+Shift+P → Developer: Reload Window` is enough
 
@@ -170,6 +170,10 @@ Repeat for every profile. Your primary `~/.claude` is already authenticated.
   commands/ → junction → ~/.claude/commands/
 
 ~/.claude-freelance/    ← another profile (same structure)
+
+~/bin/                   ← cmd.exe launchers (added to user PATH by the installer)
+  claude-work.cmd
+  claude-freelance.cmd
 ```
 
 ---
