@@ -96,6 +96,22 @@ Sequence:
 
 ---
 
+## Terminal aliases: PowerShell, Git Bash e cmd.exe
+
+`claude-<perfil>` existe em tres formas, uma por shell, todas geradas por `Update-BinLaunchers` (`lib/common.ps1`):
+
+| Shell | Mecanismo | Arquivo |
+|---|---|---|
+| PowerShell | funcao no `$PROFILE` | bloco `# -- Claude Multi-Agents --` |
+| Git Bash | funcao no `~/.bashrc` | idem |
+| cmd.exe | script `.cmd` | `~/bin/claude-<perfil>.cmd` |
+
+`cmd.exe` nao le `$PROFILE` nem `~/.bashrc` — ele so resolve comandos que estao no **PATH**. Por isso, alem de gravar os shims em `~/bin`, o instalador chama `Ensure-UserBinOnPath` (`lib/path.ps1`) para garantir que `~/bin` esteja no PATH do usuario (`HKCU\Environment`, nunca Machine). Sem isso, `claude-<perfil>` falha em `cmd.exe` com `'claude-<perfil>' nao e reconhecido como um comando interno ou externo`, mesmo funcionando normalmente em PowerShell e Git Bash.
+
+`Ensure-UserBinOnPath` e idempotente (nao duplica entrada), nunca usa `setx` (trunca o PATH em 1024 chars) e atualiza tanto o PATH persistente quanto `$env:PATH` da sessao atual — mas terminais **ja abertos** continuam sem o PATH novo ate serem reabertos.
+
+---
+
 ## profiles.json
 
 The installer writes `~/.claude/profiles.json` mapping profile names to directories:

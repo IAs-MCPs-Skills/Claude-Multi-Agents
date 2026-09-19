@@ -544,6 +544,9 @@ function Update-BinLaunchers {
     $bin    = "$env:USERPROFILE\bin"
     $envMap = Load-ProfileEnv
     if (-not (Test-Path $bin)) { New-Item -ItemType Directory -Path $bin -Force | Out-Null }
+    if (Get-Command Ensure-UserBinOnPath -ErrorAction SilentlyContinue) {
+        Ensure-UserBinOnPath -Dir $bin
+    }
     $upfx = $env:USERPROFILE -replace '\\', '/'
 
     foreach ($e in $map.GetEnumerator()) {
