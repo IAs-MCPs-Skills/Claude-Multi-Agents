@@ -197,6 +197,31 @@ The new `.credentials.json` will be written to the profile's directory. Other pr
 
 ---
 
+## `claude-<perfil>` não reconhecido no cmd.exe
+
+**Causa:** A pasta `~\bin` (onde os launchers `.cmd` são gravados) não está no PATH do usuário.
+
+**Diagnóstico:**
+```cmd
+where claude-guss
+```
+Se retornar erro "Não foi possível encontrar o arquivo", o PATH não contém `~\bin`.
+
+**Correção:**
+```powershell
+# Opção 1: regenerar launchers (adiciona ~\bin ao PATH automaticamente)
+.\claude-profiles.ps1 scan
+
+# Opção 2: adicionar manualmente
+[Environment]::SetEnvironmentVariable('Path', ((([Environment]::GetEnvironmentVariable('Path','User')) -split ';') + "$env:USERPROFILE\bin" -join ';'), 'User')
+
+# Reabra o cmd.exe
+```
+
+Após a correção, reabra **todas** as abas de terminal abertas.
+
+---
+
 ## Still stuck?
 
 Open an issue at: [github.com/Gustavo-b017/claude-multi-agents/issues](https://github.com/Gustavo-b017/claude-multi-agents/issues)
