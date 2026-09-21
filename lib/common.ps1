@@ -544,6 +544,16 @@ function Update-BinLaunchers {
     $bin    = "$env:USERPROFILE\bin"
     $envMap = Load-ProfileEnv
     if (-not (Test-Path $bin)) { New-Item -ItemType Directory -Path $bin -Force | Out-Null }
+
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if ([string]::IsNullOrEmpty($userPath)) { $userPath = '' }
+    $pathArray = @(($userPath -split ';') | Where-Object { $_ })
+    if ($pathArray -notcontains $bin) {
+        $newPath = (($pathArray + $bin) -join ';').TrimStart(';')
+        [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+        Write-Ok "~/bin adicionado ao PATH do usuario (reabra o cmd)"
+    }
+
     $upfx = $env:USERPROFILE -replace '\\', '/'
 
     foreach ($e in $map.GetEnumerator()) {
